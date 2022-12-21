@@ -19,7 +19,7 @@ NUM_ITER = 2000000
 CHECK_FREQ = 100000
 SEED = 42
 BATCH_SIZE = 1024
-MID_CHANNELS = [256, 1024, 2048, 4096]
+MID_CHANNELS = [512]
 
 name = 'mnist'
 ds = tfds.load(name, split=tfds.Split.TRAIN).shuffle(1024, seed=42)
