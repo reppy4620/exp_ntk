@@ -20,7 +20,9 @@ NUM_ITER = 2000000
 CHECK_FREQ = 100000
 SEED = 42
 BATCH_SIZE = 1000
-MID_CHANNELS = [256, 512, 1024, 2048, 4096]
+# MID_CHANNELS = [256, 512, 1024, 2048, 4096]
+
+MID_CHANNELS = [4096]
 
 name = 'cifar10'
 # ds = tfds.load(name, split=tfds.Split.TRAIN).shuffle(1024, seed=42)
@@ -79,12 +81,16 @@ def main(mid_channel):
     init_fn, apply_fn = stax.serial(
         stax.Dense(mid_channel),
         stax.Relu,
+        stax.Dense(mid_channel // 2),
+        stax.Relu,
+        stax.Dense(mid_channel // 4),
+        stax.Relu,
         stax.Dense(NUM_CLASSES)
     )
 
     _, params = init_fn(jax.random.PRNGKey(SEED), (-1, IMG_SIZE*IMG_SIZE * 3))
 
-    optimizer = optax.adam(learning_rate=3e-4)
+    optimizer = optax.adam(learning_rate=1e-5)
     opt_state = optimizer.init(params)
 
     @jax.jit
