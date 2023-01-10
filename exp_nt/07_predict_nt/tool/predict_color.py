@@ -1,4 +1,3 @@
-#%%
 import tensorflow as tf
 tf.config.set_visible_devices([], 'GPU')
 import sys
@@ -18,7 +17,6 @@ NUM_CLASSES = 10
 SEED = 42
 
 name = sys.argv[1]
-# ds = tfds.load(name, split=tfds.Split.TRAIN).shuffle(1024, seed=42)
 train_ds, test_ds = tfds.load(name, split=['train[:80%]', 'train[80%:]'])
 
 def preprocess(x):
@@ -60,30 +58,27 @@ test_y = test_y[inds]
 def preprocess(batch):
     return batch
 
-def mse_loss(x, labels, predict_fn, t=None):
+def evaluate(x, labels, predict_fn):
     xx1, xx2 = x[:x.shape[0]//2, :], x[x.shape[0]//2:, :]
-    preds = [predict_fn(t=t, x_test=xx, get='ntk') for xx in [xx1, xx2]]
+    preds = [predict_fn(x_test=xx, get='ntk') for xx in [xx1, xx2]]
     pred = np.concatenate(preds, axis=0)
-    loss = (0.5 * (pred - labels) ** 2).mean()
-    return loss
+    pred_y = np.argmax(pred, axis=-1)
+    gt_y = np.argmax(labels, axis=-1)
+    acc = (pred_y == gt_y).mean()
+    return acc
 
-def xentropy_loss(x, labels, predict_fn, t=None):
-    xx1, xx2 = x[:x.shape[0]//2, :], x[x.shape[0]//2:, :]
-    preds = [predict_fn(t=t, x_test=xx, get='ntk') for xx in [xx1, xx2]]
-    pred = np.concatenate(preds, axis=0)
-    loss = optax.softmax_cross_entropy(pred, labels).mean()
-    return loss
-
-def calc_loss(x, labels, predict_fn, t=None):
+def calculate(x, labels, predict_fn, t=None):
     xx1, xx2 = x[:x.shape[0]//2, :], x[x.shape[0]//2:, :]
     preds = [predict_fn(t=t, x_test=xx, get='ntk') for xx in [xx1, xx2]]
     pred = np.concatenate(preds, axis=0)
     mse = (0.5 * (pred - labels) ** 2).mean()
     xentropy = optax.softmax_cross_entropy(pred, labels).mean()
-    return mse, xentropy
+    pred_y = np.argmax(pred, axis=-1)
+    gt_y = np.argmax(labels, axis=-1)
+    acc = (pred_y == gt_y).mean()
+    return mse, xentropy, acc
 
 def main():
-
     *_, kernel_fn = stax.serial(
         stax.Dense(128),
         stax.Relu(),
@@ -92,20 +87,20 @@ def main():
 
     predict_fn = nt.predict.gradient_descent_mse_ensemble(kernel_fn, train_x, train_y, diag_reg=train_x.shape[0] * 1e-8)
 
-    ts = np.arange(0, 10**3)
+    ts = np.logspace(1, 15, 100)
 
-    train_loss = [calc_loss(train_x, train_y, predict_fn, t=t) for t in tqdm(ts)]
-    test_loss = [calc_loss(test_x, test_y, predict_fn, t=t) for t in tqdm(ts)]
+    train_info = [calculate(train_x, train_y, predict_fn, t=t) for t in tqdm(ts)]
+    test_info = [calculate(test_x, test_y, predict_fn, t=t) for t in tqdm(ts)]
     
-    train_mse, train_xentropy = tuple(zip(*train_loss))
-    test_mse, test_xentropy = tuple(zip(*test_loss))
+    train_mse, train_xentropy, train_acc = tuple(zip(*train_info))
+    test_mse, test_xentropy, test_acc = tuple(zip(*test_info))
 
     output_dir = Path(sys.argv[2])
     output_dir.mkdir(parents=True, exist_ok=True)
 
     plt.figure(figsize=(12, 8))
-    plt.plot(train_mse, label='train')
-    plt.plot(test_mse, label='test')
+    plt.semilogx(ts, train_mse, label='train')
+    plt.semilogx(ts, test_mse, label='test')
     plt.grid()
     plt.legend()
     plt.xlabel('t')
@@ -114,13 +109,28 @@ def main():
     plt.close()
 
     plt.figure(figsize=(12, 8))
-    plt.plot(train_xentropy, label='train')
-    plt.plot(test_xentropy, label='test')
+    plt.semilogx(ts, train_xentropy, label='train')
+    plt.semilogx(ts, test_xentropy, label='test')
     plt.grid()
     plt.legend()
     plt.xlabel('t')
     plt.ylabel('xentropy')
     plt.savefig(output_dir / 'xentropy.png')
     plt.close()
+
+    plt.figure(figsize=(12, 8))
+    plt.semilogx(ts, train_acc, label='train')
+    plt.semilogx(ts, test_acc, label='test')
+    plt.grid()
+    plt.legend()
+    plt.xlabel('t')
+    plt.ylabel('accuracy')
+    plt.ylim(0, 1)
+    plt.savefig(output_dir / 'accuracy.png')
+    plt.close()
+
+    acc = evaluate(test_x, test_y, predict_fn)
+    with open(output_dir / 'acc.txt', 'w') as f:
+        f.write(f'{acc}')
 
 main()

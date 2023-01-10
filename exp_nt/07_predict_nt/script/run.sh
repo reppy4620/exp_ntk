@@ -2,7 +2,7 @@
 
 output_dir=../out
 
-datasets=(mnist:3.*.* cifar10)
+datasets=(fashion_mnist mnist:3.*.* cifar10)
 
 for d in ${datasets[@]};
 do
